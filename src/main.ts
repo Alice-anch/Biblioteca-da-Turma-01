@@ -1,10 +1,10 @@
 import { campo, elemento, selecao } from "./dom";
-import { livros } from "./dados";
+import { buscarLivro, listarLivros } from "./api";
 import type { Genero, Livro, StatusLivro } from "./tipos";
-import { adicionarLivro, transformar } from "./servicos";
+import { adicionarLivro } from "./servicos";
 
 elemento("nome-do-sistema").textContent = "Biblioteca da Turma";
-elemento("versao").textContent = "v0.2.0";
+elemento("versao").textContent = "v0.3.0";
 elemento("data-de-hoje").textContent = new Date().toLocaleDateString("pt-BR");
 
 const corPorStatus: Record<StatusLivro, string> = {
@@ -13,7 +13,8 @@ const corPorStatus: Record<StatusLivro, string> = {
   disponivel: "baixa",  // verde
 };
 
-const lista: Livro[] = [...livros];
+// Começa vazia: quem preenche é a API
+let lista: Livro[] = [];
 
 function criarItem(livro: Livro): HTMLLIElement {
   const item = document.createElement("li");
@@ -33,33 +34,27 @@ function criarItem(livro: Livro): HTMLLIElement {
 }
 
 function desenhar(): void {
-  const itens = transformar(lista, criarItem);
-  elemento("lista").replaceChildren(...itens);
+  // map: substitui o transformar da Aula 2
+  elemento("lista").replaceChildren(...lista.map(criarItem));
 
-  let atrasados = 0;
-  for (const livro of lista) {
-    if (livro.status === "atrasado") {
-      atrasados++;
-    }
-  }
+  // filter: substitui o laço for para contar os atrasados
+  const atrasados = lista.filter((l) => l.status === "atrasado");
 
   elemento("total").textContent = String(lista.length);
-  elemento("pendentes").textContent = String(atrasados);
+  elemento("pendentes").textContent = String(atrasados.length);
 
-  let posicao = 0;
-  while (posicao < lista.length && lista[posicao].status !== "atrasado") {
-    posicao++;
-  }
+  // find: substitui o while para achar o primeiro atrasado
+  const primeiroAtrasado = lista.find((l) => l.status === "atrasado");
 
-  if (posicao < lista.length) {
-    const atrasado = lista[posicao];
-    elemento("comece-por").textContent = `Atenção - Devolução atrasada: #${atrasado.id} ${atrasado.titulo}`;
+  if (primeiroAtrasado) {
+    elemento("comece-por").textContent = `Atenção - Devolução atrasada: #${primeiroAtrasado.id} ${primeiroAtrasado.titulo}`;
     elemento("comece-por").hidden = false;
   } else {
     elemento("comece-por").hidden = true;
   }
 }
 
+// O cadastro ainda grava só na tela na Aula 3 (vai para o banco na Aula 4)
 elemento("formulario").addEventListener("submit", (evento) => {
   evento.preventDefault();
   elemento("erro").textContent = "";
@@ -79,4 +74,29 @@ elemento("formulario").addEventListener("submit", (evento) => {
   }
 });
 
-desenhar();
+// Desafio Prata: busca um livro pelo id e mostra no console
+async function mostrarLivro(id: number): Promise<void> {
+  const procurado = await buscarLivro(id);
+  if (procurado) {
+    console.log(`Encontrado: ${procurado.titulo}`);
+  } else {
+    console.log("Livro não encontrado.");
+  }
+}
+
+// Começo do programa: busca no banco, depois desenha
+async function iniciar(): Promise<void> {
+  try {
+    lista = await listarLivros();
+    desenhar();
+  } catch (erro) {
+    if (erro instanceof Error) {
+      // Desafio Ouro: mostra na tela quando a API estiver fora do ar
+      elemento("erro").textContent = erro.message;
+    }
+  }
+
+  await mostrarLivro(3);
+}
+
+iniciar();
