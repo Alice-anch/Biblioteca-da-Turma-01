@@ -1,0 +1,58 @@
+import type { Livro } from "./tipos";
+
+export const livros: Livro[] = [
+  {
+    id: 1,
+    titulo: "Código Limpo",
+    autor: "Robert C. Martin",
+    genero: "tecnico",
+    status: "atrasado",
+    assuntos: ["programacao", "boas-praticas"],
+    cadastradoEm: new Date(),
+  },
+  {
+    id: 2,
+    titulo: "O Hobbit",
+    autor: "J.R.R. Tolkien",
+    genero: "fantasia",
+    status: "disponivel",
+    assuntos: ["aventura", "classico"],
+    cadastradoEm: new Date(),
+  },
+  {
+    id: 3,
+    titulo: "1984",
+    autor: "George Orwell",
+    genero: "ficcao",
+    status: "emprestado",
+    assuntos: ["distopia", "politica"],
+    cadastradoEm: new Date(),
+  },
+  {
+    id: 4,
+    titulo: "Entendendo Algoritmos",
+    autor: "Aditya Bhargava",
+    genero: "tecnico",
+    status: "atrasado",
+    assuntos: ["logica", "estruturas-de-dados"],
+    cadastradoEm: new Date(),
+  },
+  {
+    id: 5,
+    titulo: "Steve Jobs",
+    autor: "Walter Isaacson",
+    genero: "biografia",
+    status: "atrasado",
+    assuntos: ["tecnologia", "negocios"],
+    cadastradoEm: new Date(),
+  },
+  {
+    id: 6,
+    titulo: "Duna",
+    autor: "Frank Herbert",
+    genero: "ficcao",
+    status: "atrasado",
+    assuntos: ["sci-fi", "espaco"],
+    cadastradoEm: new Date(),
+  },
+];
