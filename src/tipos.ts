@@ -9,6 +9,8 @@ export interface Livro {
   autor?: string;
   genero: Genero;
   status: StatusLivro;
+  devolucao_prevista?: string | null;
+  assuntos: string[];
 }
 
 export interface NovoLivro {
@@ -22,3 +24,6 @@ export interface Sessao {
   token: string;
   nome: string;
 }
+
+// NOVO (Aula 6): os números do painel. Record garante que as três chaves existam.
+export type Contagem = Record<StatusLivro, number>;

@@ -1,4 +1,4 @@
-import type { Livro, NovoLivro, Sessao, StatusLivro } from "./tipos";
+import type { Contagem, Livro, NovoLivro, Sessao, StatusLivro } from "./tipos";
 
 const CHAVE_SESSAO = "biblioteca:sessao";
 
@@ -56,12 +56,17 @@ async function enviar(metodo: string, url: string, corpo?: unknown): Promise<Res
 }
 
 // ==========================================
-// CRUD DE LIVROS (Aula 4)
+// CRUD E ESTATÍSTICAS DE LIVROS (Aulas 4 e 6)
 // ==========================================
 
 export async function listarLivros(): Promise<Livro[]> {
   const resposta = await enviar("GET", "/api/livros");
   return (await resposta.json()) as Livro[];
+}
+
+export async function buscarEstatisticas(): Promise<Contagem> {
+  const resposta = await enviar("GET", "/api/estatisticas");
+  return (await resposta.json()) as Contagem;
 }
 
 export async function cadastrarLivro(dados: NovoLivro): Promise<Livro> {

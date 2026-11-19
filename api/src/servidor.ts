@@ -10,22 +10,41 @@ import { GENEROS, STATUS_LIVRO, type DadosLivro, type StatusLivro } from "./tipo
 const app = express();
 app.use(express.json());
 
+// Subconsulta com JOIN e GROUP_CONCAT trazendo os assuntos (relação N:N) em cada livro
 const SELECT_LIVROS = `
-  SELECT id, usuario_id, titulo, autor, genero, status
-  FROM livros
+  SELECT l.id,
+         l.usuario_id,
+         l.titulo,
+         l.autor,
+         l.genero,
+         l.status,
+         DATE_FORMAT(l.devolucao_prevista, '%Y-%m-%d') AS devolucao_prevista,
+         (SELECT GROUP_CONCAT(a.nome ORDER BY a.nome SEPARATOR ',')
+          FROM livro_assunto la
+          JOIN assuntos a ON a.id = la.assunto_id
+          WHERE la.livro_id = l.id) AS assuntos
+  FROM livros l
 `;
+
+// Converte a string "programacao,boas-praticas" (ou null) em um array string[]
+function paraLivro(linha: RowDataPacket): RowDataPacket {
+  return {
+    ...linha,
+    assuntos: linha.assuntos ? String(linha.assuntos).split(",") : [],
+  };
+}
 
 async function buscarUm(id: number, usuarioId: number): Promise<RowDataPacket | undefined> {
   const [linhas] = await banco.execute<RowDataPacket[]>(
-    `${SELECT_LIVROS} WHERE id = ? AND usuario_id = ?`,
+    `${SELECT_LIVROS} WHERE l.id = ? AND l.usuario_id = ?`,
     [id, usuarioId]
   );
-  return linhas.length > 0 ? linhas[0] : undefined;
+  return linhas.length > 0 ? paraLivro(linhas[0]) : undefined;
 }
 
 function validar(dados: DadosLivro): string | undefined {
-  if (typeof dados.titulo !== "string" || dados.titulo.trim().length < 2) {
-    return "O título precisa ter pelo menos 2 caracteres.";
+  if (typeof dados.titulo !== "string" || dados.titulo.trim().length < 3) {
+    return "O título precisa ter pelo menos 3 caracteres.";
   }
   if (!dados.genero || !GENEROS.includes(dados.genero)) {
     return "Selecione um gênero válido.";
@@ -34,16 +53,58 @@ function validar(dados: DadosLivro): string | undefined {
 }
 
 // ==========================================
-// ROTAS DE LIVROS (Protegidas por exigirLogin)
+// ROTAS DE LIVROS E ESTATÍSTICAS (Aulas 4, 5 e 6)
 // ==========================================
 
-// LER TODOS DO USUÁRIO LOGADO
-app.get("/api/livros", exigirLogin, async (_req, res) => {
+// PAINEL DE ESTATÍSTICAS: GROUP BY no banco
+app.get("/api/estatisticas", exigirLogin, async (_req, res) => {
   const [linhas] = await banco.execute<RowDataPacket[]>(
-    `${SELECT_LIVROS} WHERE usuario_id = ? ORDER BY id`,
+    `SELECT status, COUNT(*) AS quantidade
+     FROM livros
+     WHERE usuario_id = ?
+     GROUP BY status`,
     [usuarioDe(res)]
   );
-  res.json(linhas);
+
+  // Começa com zeros porque o GROUP BY não devolve linha para status sem livros
+  const contagem: Record<StatusLivro, number> = {
+    disponivel: 0,
+    emprestado: 0,
+    atrasado: 0,
+  };
+
+  for (const linha of linhas) {
+    const status = linha.status as StatusLivro;
+    if (status in contagem) {
+      contagem[status] = Number(linha.quantidade);
+    }
+  }
+
+  res.json(contagem);
+});
+
+// LER TODOS DO USUÁRIO LOGADO (com filtros opcionais na URL: ?status=...&busca=...)
+app.get("/api/livros", exigirLogin, async (req, res) => {
+  let sql = `${SELECT_LIVROS} WHERE l.usuario_id = ?`;
+  const valores: (string | number)[] = [usuarioDe(res)];
+
+  const { status, busca } = req.query;
+
+  if (typeof status === "string" && STATUS_LIVRO.includes(status as StatusLivro)) {
+    sql += " AND l.status = ?";
+    valores.push(status);
+  }
+
+  if (typeof busca === "string" && busca.trim() !== "") {
+    sql += " AND (l.titulo LIKE ? OR l.autor LIKE ?)";
+    const termo = `%${busca.trim()}%`;
+    valores.push(termo, termo);
+  }
+
+  sql += " ORDER BY FIELD(l.status, 'atrasado', 'emprestado', 'disponivel'), l.titulo ASC";
+
+  const [linhas] = await banco.execute<RowDataPacket[]>(sql, valores);
+  res.json(linhas.map(paraLivro));
 });
 
 // LER UM POR ID
@@ -72,10 +133,10 @@ app.post("/api/livros", exigirLogin, async (req, res) => {
      VALUES (?, ?, ?, ?, ?)`,
     [
       usuarioId,
-      dados.titulo!.trim(),
+      String(dados.titulo).trim(),
       dados.autor?.trim() || "Autor não informado",
-      dados.genero,
-      dados.status ?? "disponivel",
+      String(dados.genero),
+      String(dados.status ?? "disponivel"),
     ]
   );
 

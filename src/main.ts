@@ -1,6 +1,6 @@
-import { campo, elemento, selecao } from "./dom";
 import {
   alterarStatus,
+  buscarEstatisticas,
   cadastrarLivro,
   criarConta,
   encerrarSessao,
@@ -10,10 +10,19 @@ import {
   removerLivro,
   sessaoAtual,
 } from "./api";
+import { campo, elemento, selecao } from "./dom";
+import {
+  contarPorStatus,
+  existeAtrasado,
+  filtrarPorStatus,
+  ordenarPorUrgencia,
+  pesquisarLivros,
+  todosDisponiveis,
+} from "./servicos";
 import type { Genero, Livro, StatusLivro } from "./tipos";
 
 elemento("nome-do-sistema").textContent = "Biblioteca da Turma";
-elemento("versao").textContent = "v0.5.0";
+elemento("versao").textContent = "v0.6.0";
 elemento("data-de-hoje").textContent = new Date().toLocaleDateString("pt-BR");
 
 const corPorStatus: Record<StatusLivro, string> = {
@@ -23,6 +32,8 @@ const corPorStatus: Record<StatusLivro, string> = {
 };
 
 let lista: Livro[] = [];
+let statusSelecionado: StatusLivro | "todos" = "todos";
+let termoDeBusca = "";
 
 function mostrarErro(erro: unknown): void {
   elemento("erro").textContent =
@@ -48,16 +59,29 @@ function criarItem(livro: Livro): HTMLLIElement {
 
   const titulo = document.createElement("h3");
   titulo.className = "tarefa__titulo";
-  titulo.textContent = `#${livro.id} ${livro.titulo} (${livro.genero})`;
+  const infoAutor = livro.autor && livro.autor !== "Autor não informado" ? ` — ${livro.autor}` : "";
+  titulo.textContent = `#${livro.id} ${livro.titulo}${infoAutor}`;
 
   const meta = document.createElement("div");
   meta.className = "tarefa__meta";
 
-  const etiqueta = document.createElement("span");
-  etiqueta.className = `etiqueta etiqueta--${classeCor}`;
-  etiqueta.textContent = livro.status;
+  const etiquetaStatus = document.createElement("span");
+  etiquetaStatus.className = `etiqueta etiqueta--${classeCor}`;
+  etiquetaStatus.textContent = livro.status;
 
-  meta.append(etiqueta);
+  const etiquetaGenero = document.createElement("span");
+  etiquetaGenero.className = "tarefa__prazo";
+  etiquetaGenero.textContent = `Gênero: ${livro.genero}`;
+
+  // Assuntos vindos da relação N:N via GROUP_CONCAT (Aula 6)
+  const tagsAssuntos = (livro.assuntos ?? []).map((assunto) => {
+    const elementoTag = document.createElement("span");
+    elementoTag.className = "tag";
+    elementoTag.textContent = assunto;
+    return elementoTag;
+  });
+
+  meta.append(etiquetaStatus, etiquetaGenero, ...tagsAssuntos);
   principal.append(titulo, meta);
 
   // Botões de status e remoção (Aula 4)
@@ -81,22 +105,80 @@ function criarItem(livro: Livro): HTMLLIElement {
   return item;
 }
 
-function desenhar(): void {
-  elemento("lista").replaceChildren(...lista.map(criarItem));
+// Quais livros mostrar: filtrar, pesquisar e ordenar sem alterar `lista`
+function livrosVisiveis(): Livro[] {
+  let resultado = lista;
 
-  const atrasados = lista.filter((l) => l.status === "atrasado");
-  elemento("total").textContent = String(lista.length);
-  elemento("pendentes").textContent = String(atrasados.length);
-
-  const primeiroAtrasado = lista.find((l) => l.status === "atrasado");
-
-  if (primeiroAtrasado) {
-    elemento("comece-por").textContent = `Atenção - Devolução atrasada: #${primeiroAtrasado.id} ${primeiroAtrasado.titulo}`;
-    elemento("comece-por").hidden = false;
-  } else {
-    elemento("comece-por").hidden = true;
+  if (statusSelecionado !== "todos") {
+    resultado = filtrarPorStatus(resultado, statusSelecionado);
   }
+
+  if (termoDeBusca.trim() !== "") {
+    resultado = pesquisarLivros(resultado, termoDeBusca);
+  }
+
+  return ordenarPorUrgencia(resultado);
 }
+
+// Atualiza o painel usando o GROUP BY do banco (melhor quando há paginação ou muitos dados)
+// Alternativa local no navegador (melhor quando todos os dados já estão carregados): contarPorStatus(lista)
+async function atualizarPainel(): Promise<void> {
+  const contagem = await buscarEstatisticas();
+  const total = contagem.disponivel + contagem.emprestado + contagem.atrasado;
+
+  elemento("total").textContent = String(total);
+  elemento("disponiveis").textContent = String(contagem.disponivel);
+  elemento("emprestados").textContent = String(contagem.emprestado);
+  elemento("atrasados").textContent = String(contagem.atrasado);
+}
+
+function desenhar(): void {
+  const visiveis = livrosVisiveis();
+
+  elemento("lista").replaceChildren(...visiveis.map(criarItem));
+  elemento("vazio").hidden = visiveis.length > 0;
+
+  // some: exibe aviso amarelo se existir pelo menos um livro atrasado
+  elemento("aviso-urgente").classList.toggle(
+    "aviso--oculto",
+    !existeAtrasado(lista)
+  );
+
+  // every: verifica se todos os livros estão disponíveis
+  if (todosDisponiveis(lista)) {
+    console.log("Todos os livros estão disponíveis no acervo!");
+  }
+
+  // Mantém a referência da contagem local para demonstração
+  void contarPorStatus(lista);
+
+  atualizarPainel().catch(mostrarErro);
+}
+
+// ==========================================
+// FILTROS E BUSCA NA TELA (Aula 6)
+// ==========================================
+
+elemento("filtros-status").addEventListener("click", (evento) => {
+  const alvo = evento.target;
+  if (!(alvo instanceof HTMLButtonElement)) return;
+
+  const escolhido = alvo.dataset.status;
+  if (!escolhido) return;
+
+  statusSelecionado = escolhido as StatusLivro | "todos";
+
+  for (const b of elemento("filtros-status").querySelectorAll("button")) {
+    b.classList.toggle("filtro--ativo", b === alvo);
+  }
+
+  desenhar();
+});
+
+campo("busca").addEventListener("input", () => {
+  termoDeBusca = campo("busca").value;
+  desenhar();
+});
 
 // ==========================================
 // AÇÕES DO CRUD NA TELA (Aula 4)
@@ -127,12 +209,14 @@ elemento("formulario").addEventListener("submit", async (evento) => {
   elemento("erro").textContent = "";
 
   try {
-    const nova = await cadastrarLivro({
+    const novo = await cadastrarLivro({
       titulo: campo("titulo").value.trim(),
+      autor: campo("autor").value.trim() || undefined,
       genero: selecao("genero").value as Genero,
     });
-    lista = [...lista, nova];
+    lista = [...lista, novo];
     campo("titulo").value = "";
+    campo("autor").value = "";
     desenhar();
   } catch (erro) {
     mostrarErro(erro);
@@ -192,6 +276,8 @@ elemento("form-criar").addEventListener("submit", async (evento) => {
 elemento("botao-sair").addEventListener("click", () => {
   encerrarSessao();
   lista = [];
+  statusSelecionado = "todos";
+  termoDeBusca = "";
   (elemento("form-entrar") as HTMLFormElement).reset();
   mostrarFormulario(false);
   iniciar();

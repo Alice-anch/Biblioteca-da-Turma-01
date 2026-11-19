@@ -1,35 +1,48 @@
-import type { Livro, NovoLivro } from "./tipos";
+import type { Contagem, Livro, StatusLivro } from "./tipos";
 
-function gerarId(lista: Livro[]): number {
-  let maior = 0;
-  for (const livro of lista) {
-    if (livro.id > maior) {
-      maior = livro.id;
-    }
-  }
-  return maior + 1;
+// filter: seleciona livros por status no navegador
+export function filtrarPorStatus(lista: Livro[], status: StatusLivro): Livro[] {
+  return lista.filter((livro) => livro.status === status);
 }
 
-export function adicionarLivro(lista: Livro[], dados: NovoLivro): Livro {
-  if (dados.titulo.trim().length < 3) {
-    throw new Error("O título precisa ter pelo menos 3 caracteres.");
-  }
-
-  const livro: Livro = {
-    ...dados,
-    id: gerarId(lista),
-    status: "disponivel",
-    cadastradoEm: new Date(),
-  };
-
-  lista.push(livro);
-  return livro;
+// filter + includes: pesquisa sem diferenciar maiúsculas de minúsculas (título ou autor)
+export function pesquisarLivros(lista: Livro[], termo: string): Livro[] {
+  const procurado = termo.trim().toLowerCase();
+  return lista.filter(
+    (livro) =>
+      livro.titulo.toLowerCase().includes(procurado) ||
+      (livro.autor ?? "").toLowerCase().includes(procurado)
+  );
 }
 
-export function transformar<T, R>(lista: T[], regra: (item: T) => R): R[] {
-  const resultado: R[] = [];
-  for (const item of lista) {
-    resultado.push(regra(item));
-  }
-  return resultado;
+// some: existe pelo menos um livro com devolução atrasada?
+export function existeAtrasado(lista: Livro[]): boolean {
+  return lista.some((livro) => livro.status === "atrasado");
+}
+
+// every: todos os livros estão disponíveis no acervo?
+export function todosDisponiveis(lista: Livro[]): boolean {
+  return lista.length > 0 && lista.every((livro) => livro.status === "disponivel");
+}
+
+// reduce: o painel calculado no navegador (Desafio Prata: útil quando a lista já está toda carregada)
+export function contarPorStatus(lista: Livro[]): Contagem {
+  return lista.reduce<Contagem>(
+    (acumulador, livro) => {
+      acumulador[livro.status]++;
+      return acumulador;
+    },
+    { disponivel: 0, emprestado: 0, atrasado: 0 }
+  );
+}
+
+// sort: ordena sem estragar o array original ([...lista]), colocando atrasados no topo
+const pesoStatus: Record<StatusLivro, number> = {
+  atrasado: 3,
+  emprestado: 2,
+  disponivel: 1,
+};
+
+export function ordenarPorUrgencia(lista: Livro[]): Livro[] {
+  return [...lista].sort((a, b) => pesoStatus[b.status] - pesoStatus[a.status]);
 }
